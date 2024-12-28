@@ -1,0 +1,48 @@
+##
+# Project Title
+#
+# @file
+# @version 0.1
+
+CC=clang
+CFLAGS += -O3 -ffast-math -pedantic -Wall -Wextra  -march=native -flto
+LDFLAGS += -march=native -flto  -O3 -ffast-math
+SRCS =  $(wildcard *.c)
+OBJS = $(patsubst %.c,%.o,$(SRCS))
+DEPS = $(patsubst %.c,%.d,$(SRCS))
+
+OBJS_PROF = $(patsubst %.c,%.prof.o,$(SRCS))
+
+.PHONY: all clean run
+
+all:  speedshark
+
+prof: default.profdata
+
+default.profdata: speedshark.prof
+	for i in $$(seq 1 10); do \
+	LLVM_PROFILE_FILE="./default-%p.rawprof" ./speedshark.prof rand$$i.pcapng ./tmp; \
+	done
+	llvm-profdata merge -o default.profdata ./default-*.rawprof
+
+clean:
+	rm -rf $(OBJS) $(DEPS) $(OBJS_PROF) speedshark speedshark.prof default.profdata ./default-*.rawprof ./tmp
+
+run: all
+	SSHARK_SRC_PORT="22" SSHARK_SRC_IP="192.168.1.200" ./speedshark 100.pcapng out.pcapng
+
+speedshark: default.profdata $(OBJS)
+	$(CC) $(LDFLAGS) -fprofile-instr-use=$^ -o $@
+
+speedshark.prof: $(OBJS_PROF)
+	$(CC) $(LDFLAGS) -fcoverage-mapping -fprofile-instr-generate $^ -o $@
+
+-include $(DEPS)
+
+%.o: %.c default.profdata
+	$(CC) $(CFLAGS) -fprofile-instr-use -MMD -MP -c $< -o $@
+
+%.prof.o: %.c
+	$(CC) $(CFLAGS) -fcoverage-mapping -fprofile-instr-generate -c $< -o $@
+
+# end
