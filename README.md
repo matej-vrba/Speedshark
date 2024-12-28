@@ -39,25 +39,25 @@ There is also third value `FILTER_HDR_NOT_FOUND`. I usually use this to signaliz
 E.g. unknown value in `next_header` field or port.
 If this value is returned the packet is saved into `unknown.pcapng`, processing is stopped and current parsed packet is printed.
 
-Decision values (`FILTER_DROP`, `FILTER_ACCEPT`, ...)
+Decision values (`FILTER_DROP`, `FILTER_ACCEPT`, ...) have negative value.
 Some parsers also return positive value indicating number of bytes parsed instead.
 This is used when parser of single protocol is split into multiple parser functions.
 At the time of wirting this can be seen in `parse_expl_enip`.
 There if `parse_expl_addr_item` made a filtering decision (return value is negative) we return that. If not it returned number of processed bytes and we continue.
-However use this with care. If the positive value "leak" and is returned from "parse_eth", the packet will be dropped.
+However use this with care. If the positive value "leak" and is returned from `parse_eth`, the packet will be dropped.
 
 There is also very basic filtering using environment variables (see `filter.c` for aviable options).
 
 ## dump function
 
 speedshark's filter includes a `dump` function.
-This function can be called independenly or it's called when `ASSERT` fails.
+This function can be called independenly but it's also called when `ASSERT` fails.
 When called it prints all parsed layers of currrent packet.
 
 This is implemented using `header_ptrs`, `headers` and `header_types` global variables.
 `packets` holds number of parsed headers/layers.
 Other two variables hold array pointing to starts of individual headers and header types.
-`dump` function then simply goes through the array and based on type prints the header.
+`dump` function then simply goes through the array and based on type parses and prints the header.
 This function is very handy for debugging.
 
 
