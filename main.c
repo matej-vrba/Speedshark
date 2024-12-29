@@ -75,6 +75,14 @@ int main(int argc, char *argv[]) {
 
     if (argc != 3){
         fprintf(stderr, "Expecing two arguments - input and output file\n");
+        fprintf(stderr, "Possible environemnt variables:\n");
+        fprintf(stderr, "SSHARK_SRC_IP\n");
+        fprintf(stderr, "SSHARK_DST_IP\n");
+        fprintf(stderr, "SSHARK_IP_ADD\n");
+        fprintf(stderr, "SSHARK_SRC_PORT\n");
+        fprintf(stderr, "SSHARK_DST_PORT\n");
+        fprintf(stderr, "SSHARK_PORT\n");
+        fprintf(stderr, "SSHARK_JSON_FILE\n");
         return 255;
     }
 
