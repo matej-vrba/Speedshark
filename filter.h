@@ -12,6 +12,7 @@ typedef struct{
     uint16_t src_port;
     uint16_t dst_port;
     uint16_t port;
+    char* json_file;
 }filter_t;
 extern filter_t filter;
 

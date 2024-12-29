@@ -46,6 +46,11 @@ static void load_port(const char *env, uint16_t *dst)
 	*dst = (uint16_t)res;
 }
 
+static void load_str(const char *env, char **dst)
+{
+	*dst = getenv(env);
+}
+
 void load_filters(void)
 {
 	char *env;
@@ -55,6 +60,7 @@ void load_filters(void)
 	load_port("SSHARK_SRC_PORT", &filter.src_port);
 	load_port("SSHARK_DST_PORT", &filter.dst_port);
 	load_port("SSHARK_PORT", &filter.port);
+	load_str("SSHARK_JSON_FILE", &filter.json_file);
     filter.src_ip32 = (uint32_t*)filter.src_ip;
     filter.dst_ip32 = (uint32_t*)filter.dst_ip;
     filter.ip_add32 = (uint32_t*)filter.ip_add;

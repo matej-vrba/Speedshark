@@ -19,61 +19,75 @@
 extern int jq_first;
 extern FILE *jq_file;
 
-//#define ENABLE_JSON
+#define ENABLE_JSON
 #ifdef ENABLE_JSON
 
-#define jinit()                                                        \
-	do {                                                           \
-		jq_file = fopen("out.json", "w");                      \
-		if (jq_file == NULL) {                                 \
-			perror("Failed to open out.json for writing"); \
-			jq_file = stdout;                              \
-		}                                                      \
-		jnew_row();                                            \
+#define jinit()                                                                \
+	do {                                                                   \
+		if (filter.json_file != NULL) {                                \
+			jq_file = fopen(filter.json_file, "w");                      \
+			if (jq_file == NULL) {                                 \
+				perror("Failed to open out.json for writing"); \
+				jq_file = stdout;                              \
+			}                                                      \
+			jnew_row();                                            \
+		}                                                              \
 	} while (0)
 
-#define jprintf(...)                           \
-	do {                                   \
-		fprintf(jq_file, __VA_ARGS__); \
+#define jprintf(...)                                   \
+	do {                                           \
+		if (filter.json_file != NULL) {        \
+			fprintf(jq_file, __VA_ARGS__); \
+		}                                      \
 	} while (0)
 
-#define jnew_row(void)        \
-	do {                  \
-		jq_first = 1; \
+#define jnew_row(void)                          \
+	do {                                    \
+		if (filter.json_file != NULL) { \
+			jq_first = 1;           \
+		}                               \
 	} while (0)
 
-#define jnewline(void)                           \
-	do {                                     \
-		if (jq_first) {                  \
-			fprintf(jq_file, "\n");  \
-			jq_first = 0;            \
-		} else {                         \
-			fprintf(jq_file, ",\n"); \
-		}                                \
+#define jnewline(void)                                   \
+	do {                                             \
+		if (filter.json_file != NULL) {          \
+			if (jq_first) {                  \
+				fprintf(jq_file, ",\n{\n");  \
+				jq_first = 0;            \
+			} else {                         \
+				fprintf(jq_file, ",\n"); \
+			}                                \
+		}                                        \
 	} while (0)
 
-#define jprintu(name, val)                                 \
-	do {                                               \
-		jnewline();                                \
-		fprintf(jq_file, "\"%s\": %u", name, val); \
+#define jprintu(name, val)                                         \
+	do {                                                       \
+		if (filter.json_file != NULL) {                    \
+			jnewline();                                \
+			fprintf(jq_file, "\"%s\": %u", name, val); \
+		}                                                  \
 	} while (0)
 
-#define jprint_mac(name, mac)                              \
-	do {                                               \
-		jnewline();                                \
-		fprintf(jq_file, "\"%s\": ", name);        \
-		fprintf(jq_file, "\"");                    \
-		for (int i = 0; i < 5; i++)                \
-			fprintf(jq_file, "%02x:", mac[i]); \
-		fprintf(jq_file, "%02x\"", mac[5]);        \
+#define jprint_mac(name, mac)                                      \
+	do {                                                       \
+		if (filter.json_file != NULL) {                    \
+			jnewline();                                \
+			fprintf(jq_file, "\"%s\": ", name);        \
+			fprintf(jq_file, "\"");                    \
+			for (int i = 0; i < 5; i++)                \
+				fprintf(jq_file, "%02x:", mac[i]); \
+			fprintf(jq_file, "%02x\"", mac[5]);        \
+		}                                                  \
 	} while (0)
 
-#define jprint_ipv4(name, ip)                                            \
-	do {                                                             \
-		jnewline();                                              \
-		fprintf(jq_file, "\"%s\": ", name);                      \
-		fprintf(jq_file, "\"%d.%d.%d.%d\"", ip[0], ip[1], ip[2], \
-			ip[3]);                                          \
+#define jprint_ipv4(name, ip)                                             \
+	do {                                                              \
+		if (filter.json_file != NULL) {                           \
+			jnewline();                                       \
+			fprintf(jq_file, "\"%s\": ", name);               \
+			fprintf(jq_file, "\"%d.%d.%d.%d\"", ip[0], ip[1], \
+				ip[2], ip[3]);                            \
+		}                                                         \
 	} while (0)
 
 #else //ENABLE_JSON

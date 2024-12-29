@@ -15,7 +15,7 @@
 #include "file.h"
 #include "filter.h"
 
-FILE* jq_file;
+FILE* jq_file = NULL;
 filter_t filter;
 
 void fup_handler(int signal) {
@@ -111,22 +111,18 @@ int main(int argc, char *argv[]) {
     f.data += len;
     input_file_size -= len;
 
-    jnew_row();
-    jprintf("[{");
+    jprintf("[{}");
     len = identify_block(&f, &outfile);
     assert(len > 0);
     f.data += len;
     input_file_size -= len;
-    jprintf("\n}");
     while (input_file_size > 0){
         jnew_row();
-        jprintf(",\n{");
         len = identify_block(&f, &outfile);
         assert(len > 0);
         f.data += len;
         input_file_size -= len;
         //printf("\n");
-        jprintf("\n}");
     }
     jprintf("]\n");
     if(input_file_size <= 0){

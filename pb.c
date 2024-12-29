@@ -279,7 +279,7 @@ static int32_t parse_cip(uint8_t *data, size_t len)
             i += 1;
         } else {
             printf("0x%02x: 0x%02x\n", type, *(data + sizeof(cip_t) + sizeof(uint8_t) + i));
-            printf("%x\n", type);
+            printf("0x%x\n", type);
             return FILTER_HDR_NOT_FOUND;
             ASSERT(0);
         }
@@ -479,35 +479,47 @@ static int32_t parse_vlan(uint8_t *data, size_t len){
     headers++;
     //printf("=>vlan\n");
     PARSE_START(vlan_t);
+
+	int32_t ret = chose_next_header(data + sizeof(vlan_t),
+					len - sizeof(vlan_t),
+					hdr->next_header);
+	if (ret == FILTER_ACCEPT) {
     jprintu("vlan_id", ntohs(hdr->vlan_id));
-    NEXT_HEADER(vlan_t)
+	}
+	return ret;
 }
 
-
-static int32_t parse_eth(uint8_t *data, size_t len){
+static int32_t parse_eth(uint8_t *data, size_t len)
+{
     header_ptrs[headers] = data;
-    header_types[headers] =  TYPE_ETH2;
+    header_types[headers] = TYPE_ETH2;
     headers++;
     //printf("=>eth\n");
     PARSE_START(ether2_t);
-    jprint_mac("src_mac", hdr->src_mac);
-    jprint_mac("dst_mac", hdr->dst_mac);
     //printf("Packet: \n");
     //hexdump(data, len);
 
-    //printf("dst mac: ");
-    //print_mac(hdr->dst_mac);
+	//printf("dst mac: ");
+	//print_mac(hdr->dst_mac);
 
-    //printf("src mac: ");
-    //print_mac(hdr->src_mac);
-    if (ntohs(hdr->next_header) < 1500 && (data + sizeof(ether2_t))[0] == 0xaa&& (data + sizeof(ether2_t))[1] == 0xaa){
-        //probably a 802.3, not ethernet2, so it's likely cdp or something similar
-        //return FILTER_HDR_NOT_FOUND;
-        return FILTER_ACCEPT;
-    }
+	//printf("src mac: ");
+	//print_mac(hdr->src_mac);
+	if (ntohs(hdr->next_header) < 1500 &&
+	    (data + sizeof(ether2_t))[0] == 0xaa &&
+	    (data + sizeof(ether2_t))[1] == 0xaa) {
+		//probably a 802.3, not ethernet2, so it's likely cdp or something similar
+		//return FILTER_HDR_NOT_FOUND;
+		return FILTER_ACCEPT;
+	}
 
-    //printf("next header: 0x%04x\n", hdr->next_header);
-    NEXT_HEADER(ether2_t)
+	int32_t ret = chose_next_header(data + sizeof(ether2_t),
+					len - sizeof(ether2_t),
+					hdr->next_header);
+	if (ret == FILTER_ACCEPT) {
+		jprint_mac("src_mac", hdr->src_mac);
+		jprint_mac("dst_mac", hdr->dst_mac);
+	}
+	return ret;
 }
 
 static int32_t chose_next_header(uint8_t *data, size_t len, uint16_t nh){
@@ -564,6 +576,9 @@ int32_t parse_pb(file_t *f, file_t* outfile){
             //write(outfile, f->data, block_len);
             memcpy(outfile->data, f->data, block_len);
             outfile->data += block_len;
+
+            if( jq_first != 1 )
+                jprintf("\n}");
             break;
         case FILTER_HDR_NOT_FOUND:
             write(unknown_fd, f->data, block_len);
