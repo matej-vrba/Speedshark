@@ -4,7 +4,7 @@ I've made this tool for faster pcap filtering because tshark/wireshark/scapy are
 Testing on a 3.2GiB pcap, tshark took something around 5 to 7hours and few gigabytes of ram.
 Speedshark finished in 3.2 seconds.
 
-There are more than one reason for this speed increase:
+There is more than one reason why it's this fast:
 - I've only implemented the bare minimum to process what I need (Ethernet2, IPv4, TCP, UDP, paritally CIP/ENIP).
 - Speedshark doesn't make any copies of data (except for packets matching filter - but even that is only a single copy). This helps with speed and memory requirements
 - Filtering is implemented as part of source code. Speedshark only takes two arguments - input file and output file. Unlike tshark the filter is not passed on command line, but it's written in C in source (`pb.c`).
@@ -12,7 +12,6 @@ There are more than one reason for this speed increase:
 Speedshark also supports json output (but since for now it's outputted to stdout the speed drops significantly).
 
 For now only pcapng files are supported. If you have any issues make sure your files are in pcapng format (not pcap) like this `tshark -r in.pcap -w out.pcap`. Tshark is quite fast when you don't include filters.
-
 
 The code is quite a mess. If you're interested in using this, open an issue and I'll clean it a bit and help you understand it.
 
