@@ -249,17 +249,19 @@ static int32_t parse_cip(uint8_t *data, size_t len)
     //printf("=>vlan\n");
     PARSE_START(cip_t);
     int i = 0;
-    while (hdr->service >> 7 ==
-           0) { //skips this loop for responses (responses have 1 in highest bit)
-        uint8_t type = ((data + sizeof(cip_t) + i)[0]);
+    while (hdr->service >> 7 == 0) { //skips this loop for responses (responses have 1 in highest bit)
+        uint8_t type = *((data + sizeof(cip_t) + i));
         //printf("\"type\": \"0x%02x\"\n", type);
         //printf("\"path\": \"0x%02x\"\n", *(data + sizeof(cip_t) + sizeof(uint8_t) + i));
         if (type == 0x91) { //ansi extended symbol segment
-            uint8_t len = ((data + sizeof(cip_t) + i)[1]);
+            uint8_t len = *((data + sizeof(cip_t) + i + 1));
             jnewline();
             jprintf("\"path\": \"%.*s\"", len,
                     data + sizeof(cip_t) + sizeof(tl1b_t) + i);
-            i += len + 2;
+            if (len % 2 == 1)
+                i += len + 2;
+            else
+                i += len + 1;
         }else if (type == 0x20) { //class id
             jnewline();
             jprintf("\"path\": \"0x%02x\"", *(data + sizeof(cip_t) + sizeof(uint8_t) + i));
