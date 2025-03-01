@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
-static void load_ip(const char *env, uint8_t *dst)
+static void load_ip(const char *env, uint8_t (*dst)[4])
 {
 	char *tmp = getenv(env);
 	if (tmp == NULL) {
@@ -17,7 +17,7 @@ static void load_ip(const char *env, uint8_t *dst)
 		*((uint32_t *)dst) = 0;
 		return;
 	}
-	dst[0] = res;
+	(*dst)[0] = res;
 	for (int i = 1; i < 4; i++) {
 		oct = strtok(NULL, ".");
 		res = strtol(oct, NULL, 10);
@@ -26,7 +26,7 @@ static void load_ip(const char *env, uint8_t *dst)
 			*((uint32_t *)dst) = 0;
 			return;
 		}
-		dst[i] = res;
+		(*dst)[i] = res;
 	}
 }
 
@@ -53,7 +53,6 @@ static void load_str(const char *env, char **dst)
 
 void load_filters(void)
 {
-	char *env;
 	load_ip("SSHARK_SRC_IP", &filter.src_ip);
 	load_ip("SSHARK_DST_IP", &filter.dst_ip);
 	load_ip("SSHARK_IP_ADD", &filter.ip_add);
