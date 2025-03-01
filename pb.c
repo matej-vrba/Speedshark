@@ -7,6 +7,7 @@
 
 
 
+#include "types.h"
 #include "pb.h"
 #include "file.h"
 #include "util.h"
@@ -30,8 +31,19 @@ typedef enum {
     TYPE_EX_ENIP,
     TYPE_TL,
     TYPE_CIP,
-
 } TypeID;
+
+char* header_names[] = {
+    [TYPE_ETH2] =  "ETH2",
+    [TYPE_VLAN] =  "VLAN",
+    [TYPE_IPv4] =  "IPv4",
+    [TYPE_TCP] =  "TCP",
+    [TYPE_UDP] =  "UDP",
+    [TYPE_IO_ENIP] =  "IO_ENIP",
+    [TYPE_EX_ENIP] =  "EX_ENIP",
+    [TYPE_TL] =  "TL",
+    [TYPE_CIP] =  "CIP",
+};
 
 extern int header_num;
 extern int unknown_fd;
@@ -99,8 +111,6 @@ typedef struct {
     uint16_t type;
     uint16_t len;
 } tl_t;
-// This won't be another rant, but can someone please explain why they used 1b
-// type and length for path, but 2b for type and length in command specific data
 typedef struct {
     uint8_t type;
     uint8_t len;
@@ -203,7 +213,10 @@ void dump(void){
             indent();
             printf("data:\n");
             hexdump(data + len, hdr->len);
-            //TODO cip
+        } else if (header_types[i]== TYPE_CIP){
+            DUMP_PREP(cip_t);
+            indent();
+            iprintf("service: 0x%08x\n", hdr->service);
         } else{
             printf("dump print function not implemented for type 0x%x\n", header_types[i]);
             assert(0);
@@ -212,12 +225,20 @@ void dump(void){
 }
 
 
+#if 0
+#define parser_trace(name) do{printf(name);}while(0)
+#else
+#define parser_trace(name) do{}while(0)
+#endif
+
+
 static int32_t chose_next_header(uint8_t *data, size_t len, uint16_t nh);
 
 static int32_t parse_ipv4(uint8_t *data, size_t len){
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_IPv4;
     headers++;
+    parser_trace("=>ipv4\n");
 
     PARSE_START(ipv4_t);
     if(*filter.src_ip32 != 0 && *((uint32_t*)hdr->src_ip) != *filter.src_ip32){
@@ -243,10 +264,11 @@ static int32_t parse_ipv4(uint8_t *data, size_t len){
 
 static int32_t parse_cip(uint8_t *data, size_t len)
 {
+    (void)len;
     header_ptrs[headers] = data;
     header_types[headers] = TYPE_CIP;
     headers++;
-    //printf("=>vlan\n");
+    parser_trace("=>cip\n");
     PARSE_START(cip_t);
     int i = 0;
     while (hdr->service >> 7 == 0) { //skips this loop for responses (responses have 1 in highest bit)
@@ -289,6 +311,20 @@ static int32_t parse_cip(uint8_t *data, size_t len)
         if (hdr->path_len * 2 - i <= 1)
             break;
     }
+    size_t path_len = i;
+
+    //response has two aditional status bytes
+    if (hdr->service >> 7 != 0) path_len += 2;
+
+    if ((hdr->service & ~(1 << 7)) == 0x0a) { //multi service
+      uint8_t *start = data + sizeof(cip_t) + path_len;
+      size_t num = *(uint16_t*)(start);
+      for(int i = 0; i < num; i++){
+        uint16_t offset = start[(i * 2) + 2];
+        size_t total_offset = sizeof(cip_t) + path_len + offset;
+        parse_cip(data + total_offset, len - total_offset);
+      }
+    }
     return FILTER_ACCEPT;
 }
 
@@ -303,45 +339,22 @@ static int32_t parse_cip(uint8_t *data, size_t len)
 // Type ID: Connected Data Item (0x00b1)
 //    Length: 38
 //    [CIP DATA]
-//
-// For some reason someone somewhere decided that having separate TLV entry for
-// seuqnce number is bad or something.
-// I don't think they wanted to save types (I've only seen maybe 5 out of the 2^16
-// possible used). I don't think it's to save trasmitted data (there is quite a
-// bit of wasted and reserved fields).
-// Someone just didn't want to have separate entry for seq number. Instead in
-// implicit connection sequence number is part of address TLV ("Sequence Address
-// Item") which has different type from address item without sequence number.
-// Data are then in "Connected data item" (type 0x00b1).
-//
-// But explicit connections use "Connected Address Item" for addresses which
-// contains address, but not sequence number.
-// Sequence number is put inside the "Connected data item" with type 0x00b1.
-// Which as you might have noticed uses the same type as implicit packets.
-// This means that for some reason there are two TLV entries with same type but
-// different content.
-//
-// I especially hate this because every time I read about CIP they tell you
-// how it's indenpendent of the networking technology.
-// How it doesn't depend of TCP/IP's L1-L4(up to TCP/UDP) but only meaningfull
-// way to correctly parse this is to either have two almost identical parsers or
-// to check the lower layers.
-// Also Why the f does it have 3 transport layers?
-//
-// Rant over.
-
+// They have same type but different data part. No idea why, but it proves that
+// "all well designed protocols use TLV" doesn't work the other way.
 
 static int32_t parse_expl_addr_item(uint8_t *data, size_t len, int seq){
+    (void)seq;
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_TL;
     headers++;
     ((void)len);
-    //printf("=>tl\n");
+    parser_trace("=>tl\n");
     PARSE_START(tl_t);
     size_t adjusted_len = hdr->len;
     switch(hdr->type){
         case 0x00b1: //connected data item
             adjusted_len = 2;
+            [[fallthrough]];
         case 0x00b2:// unconnected data item
         case 0x0000:// null address item
         case 0x00a1: // connected address item
@@ -371,7 +384,7 @@ static int32_t parse_expl_enip(uint8_t *data, size_t len){
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_EX_ENIP;
     headers++;
-    //printf("=>expl enip\n");
+    parser_trace("=>expl enip\n");
     PARSE_START(expl_enip_t);
     //printf("address items: %d\n", hdr->num_items);
     jprintu("enip_cmd", ntohs(hdr->cmd));
@@ -416,6 +429,7 @@ static int32_t parse_tcp(uint8_t *data, size_t len){
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_TCP;
     headers++;
+    parser_trace("=>tcp\n");
     PARSE_START(tcp_t);
     if(filter.src_port != 0 && ntohs(hdr->src_port) != filter.src_port) return FILTER_DROP;
     if(filter.dst_port != 0 && ntohs(hdr->dst_port) != filter.dst_port) return FILTER_DROP;
@@ -448,7 +462,7 @@ static int32_t parse_io_enip(uint8_t *data, size_t len){
     header_types[headers] =  TYPE_IO_ENIP;
     headers++;
     ((void)len);
-    //printf("=>io enip\n");
+    parser_trace("=>io enip\n");
     PARSE_START(io_enip_t);
     ASSERT(hdr->num_items == 2);
     ASSERT(hdr->type1 == 0x8002);
@@ -462,7 +476,7 @@ static int32_t parse_udp(uint8_t *data, size_t len){
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_UDP;
     headers++;
-    //printf("=>udp\n");
+    parser_trace("=>udp\n");
     PARSE_START(udp_t);
     if(filter.src_port != 0 && ntohs(hdr->src_port) != filter.src_port) return FILTER_DROP;
     if(filter.dst_port != 0 && ntohs(hdr->dst_port) != filter.dst_port) return FILTER_DROP;
@@ -476,10 +490,11 @@ static int32_t parse_udp(uint8_t *data, size_t len){
 }
 
 static int32_t parse_vlan(uint8_t *data, size_t len){
+    return FILTER_DROP;
     header_ptrs[headers] = data;
     header_types[headers] =  TYPE_VLAN;
     headers++;
-    //printf("=>vlan\n");
+    parser_trace("=>vlan\n");
     PARSE_START(vlan_t);
 
 	int32_t ret = chose_next_header(data + sizeof(vlan_t),
@@ -496,7 +511,7 @@ static int32_t parse_eth(uint8_t *data, size_t len)
     header_ptrs[headers] = data;
     header_types[headers] = TYPE_ETH2;
     headers++;
-    //printf("=>eth\n");
+    parser_trace("=>eth\n");
     PARSE_START(ether2_t);
     //printf("Packet: \n");
     //hexdump(data, len);
@@ -506,12 +521,15 @@ static int32_t parse_eth(uint8_t *data, size_t len)
 
 	//printf("src mac: ");
 	//print_mac(hdr->src_mac);
-	if (ntohs(hdr->next_header) < 1500 &&
-	    (data + sizeof(ether2_t))[0] == 0xaa &&
-	    (data + sizeof(ether2_t))[1] == 0xaa) {
+	if (ntohs(hdr->next_header) < 1500
+	    ) {
 		//probably a 802.3, not ethernet2, so it's likely cdp or something similar
 		//return FILTER_HDR_NOT_FOUND;
+    //printf("Dropping %x\n", hdr->next_header);
 		return FILTER_ACCEPT;
+	}
+	if(hdr->next_header == 0xcc88){//Ignore LLDP
+	       return FILTER_DROP; 
 	}
 
 	int32_t ret = chose_next_header(data + sizeof(ether2_t),
@@ -538,6 +556,7 @@ static int32_t chose_next_header(uint8_t *data, size_t len, uint16_t nh){
         case 0x0001: // ICMP
         case 0x0002: // IGMP
         case 0xdd86: // IPv6 (not used in the dataset)
+            return FILTER_DROP;
             return FILTER_ACCEPT;
         default:
              printf("unknown next header: 0x%04x\n", nh);
@@ -545,9 +564,168 @@ static int32_t chose_next_header(uint8_t *data, size_t len, uint16_t nh){
     }
 }
 
+static void packet_to_csv_line(int num, pcap_time_t time)
+{
+  static pcap_time_t start = { .t = 0 };
+  if (start.t == 0) start.t = time.t;
+  pcap_time_t t_relative = { .t = time.t - start.t };
+  int         vlan_id = -1;
+  uint8_t    *data;
+  size_t      len;
+  mac_t       src_mac;
+  mac_t       dst_mac;
+  uint8_t     ipv4_ihl;
+  uint8_t     ipv4_dscp;
+  ipv4_addr_t ip_src;
+  ipv4_addr_t ip_dst;
+  uint32_t    tcp_seq = 0;
+  uint32_t    tcp_ack = 0;
+  uint16_t    sport = 0;
+  uint16_t    dport = 0;
+  char        flags[10] = "";
+  int64_t     trans_len = -1; //TODO
+  int64_t     enip_sess = -1;
+  size_t      enip_fields_offset = 0;
+  char        enip_fields[128] = "";
+  int64_t     cid = -1;
+  int32_t     cip_seq = -1;
+  int16_t     cip_service = -1;
+  size_t      cip_service_path_len = 0;
+  char        cip_service_path[128] = "";
 
+  for (int i = 0; i < headers; i++) {
+    if (header_types[i] == TYPE_VLAN) {
+      DUMP_PREP(vlan_t);
+      vlan_id = hdr->vlan_id;
+    } else if (header_types[i] == TYPE_ETH2) {
+      DUMP_PREP(ether2_t);
+      memcpy(src_mac.addr, hdr->src_mac, 6);
+      memcpy(dst_mac.addr, hdr->dst_mac, 6);
+    } else if (header_types[i] == TYPE_TCP) {
+      DUMP_PREP(tcp_t);
+      tcp_seq = htonl(hdr->seq);
+      tcp_ack = htonl(hdr->ack);
+      sport = htons(hdr->src_port);
+      dport = htons(hdr->dst_port);
+      size_t   flags_len = 0;
+      uint16_t f_l = htons(hdr->flags_len);
+      if (f_l & 1 << 0) flags[flags_len++] = 'F';
+      if (f_l & 1 << 1) flags[flags_len++] = 'S';
+      if (f_l & 1 << 2) flags[flags_len++] = 'R';
+      if (f_l & 1 << 3) flags[flags_len++] = 'P';
+      if (f_l & 1 << 4) flags[flags_len++] = 'A';
+      if (f_l & 1 << 5) flags[flags_len++] = 'U';
+      if (f_l & 1 << 6) flags[flags_len++] = 'E';
+      if (f_l & 1 << 7) flags[flags_len++] = 'C';
+      if (f_l & 1 << 8) flags[flags_len++] = 'c';
+      flags[flags_len] = '\0';
+
+    } else if (header_types[i] == TYPE_EX_ENIP) {
+      DUMP_PREP(expl_enip_t);
+      enip_sess = hdr->session;
+
+    } else if (header_types[i] == TYPE_TL) {
+      DUMP_PREP(tl_t);
+      sprintf(enip_fields + enip_fields_offset, "f:%04x,", hdr->type);
+      if (hdr->type == 0xa1) {
+        cid = *(uint32_t *)(data + sizeof(tl_t));
+      } else if (hdr->type == 0xb1) {
+        cip_seq = *(uint16_t *)(data + sizeof(tl_t));
+      }
+
+      enip_fields_offset += 7;
+    } else if (header_types[i] == TYPE_CIP) {
+      DUMP_PREP(cip_t);
+      cip_service = hdr->service;
+      sprintf(cip_service_path + cip_service_path_len, "s:%02x,", cip_service);
+      cip_service_path_len += 5;
+
+      if (hdr->service >> 7 != 0){
+          sprintf(cip_service_path + cip_service_path_len, "r:%02x,", data[2]);
+          cip_service_path_len += 5;
+      }
+
+      char *path = data + sizeof(cip_t);
+      for (int i = 0; i < hdr->path_len;) {
+        uint8_t segment_type = path[0];
+        switch (segment_type) {
+          case 0x91: //ANSI extended symbol segment
+            strncat(cip_service_path + cip_service_path_len, path + 2, path[1]);
+            size_t segment_len = path[1];
+            if (path[1] % 2 == 1) segment_len++;
+            segment_len += 2; // "header" (type and len) len
+            cip_service_path_len += path[1];
+            path += segment_len;
+
+            i += segment_len;
+
+            break;
+          case 0x20: // 8-bit class
+            sprintf(cip_service_path + cip_service_path_len, "c:%02x,", *(uint8_t *)(path + 1));
+            cip_service_path_len += 5;
+            i += 2;
+            path += 2;
+            break;
+          case 0x24: // 8-bit instance
+            sprintf(cip_service_path + cip_service_path_len, "i:%02x,", *(uint8_t *)(path + 1));
+            cip_service_path_len += 5;
+            i += 2;
+            path += 2;
+            break;
+          case 0x25: // 16-bit instance
+            sprintf(cip_service_path + cip_service_path_len, "i:%02x,", *(uint16_t *)(path + 2));
+            cip_service_path_len += 5;
+            i += 4;
+            path += 4;
+            break;
+          default:
+          fprintf(stderr, "Unknown segment type 0x%02x\n", segment_type);
+            ASSERT(0 == 1);
+        }
+      }
+      cip_service_path[cip_service_path_len - 1] = ';';
+    } else if (header_types[i] == TYPE_IPv4) {
+      DUMP_PREP(ipv4_t);
+      ipv4_ihl = hdr->len;
+      ipv4_dscp = hdr->dscp;
+      memcpy(ip_src.addr, hdr->src_ip, 4);
+      memcpy(ip_dst.addr, hdr->dst_ip, 4);
+    }
+  }
+
+  if (cip_service_path_len != 0) cip_service_path[cip_service_path_len - 1] = '\0';
+  if (enip_fields_offset != 0) enip_fields[enip_fields_offset - 1] = '\0';
+  csvprint(num);
+  csvprint(header_names[header_types[headers - 1]]);
+  csvprint(t_relative);
+  csvprint(time);
+  csvprint(src_mac);
+  csvprintnn(vlan_id);
+  csvprint(dst_mac);
+  csvprint(ipv4_ihl);
+  csvprint(ipv4_dscp);
+  csvprint(ip_src);
+  csvprint(ip_dst);
+  csvprintnz(tcp_seq);
+  csvprintnz(tcp_ack);
+  csvprintnz(sport);
+  csvprintnz(dport);
+  if (flags[0] != '\0')
+    csvprint(flags);
+  else
+    csvprint("");
+
+  csvprintnn(trans_len);
+  csvprintnn(enip_sess);
+  csvprint(enip_fields);
+  csvprintnn(cid);
+  csvprintnn(cip_seq);
+  csvprintnn(cip_service);
+  csvprint(cip_service_path);
+}
 
 int32_t parse_pb(file_t *f, file_t* outfile){
+    static size_t num_accepted = 0;
     size_t block_len;
     size_t packet_len;
     uint8_t* packet_data;
@@ -559,8 +737,8 @@ int32_t parse_pb(file_t *f, file_t* outfile){
     //printf("=> PB\n");
     //printf("first type: 0x%08x\n", ((int32_t*)f->data)[0]);
     block_len = ((int32_t*)f->data)[1];
-    //printf("len: %ld\n", block_len);
     // ((int32_t*)f->data)[2]; -- interface id
+    //printf("len: %ld\n", block_len);
     // ((int32_t*)f->data)[3]; -- timestamp uppper
     // ((int32_t*)f->data)[4]; -- timestamp lower
     packet_len = ((int32_t*)f->data)[5]; //captured packet len
@@ -568,7 +746,7 @@ int32_t parse_pb(file_t *f, file_t* outfile){
     //printf("packet len: %ld\n", packet_len);
     packet_data = (uint8_t*)f->data + 7*4;
 
-    int ret = parse_eth(packet_data, packet_len);
+    int32_t ret = parse_eth(packet_data, packet_len);
 
     switch (ret){
         case FILTER_DROP:
@@ -579,8 +757,13 @@ int32_t parse_pb(file_t *f, file_t* outfile){
             memcpy(outfile->data, f->data, block_len);
             outfile->data += block_len;
 
-            if( jq_first != 1 )
+            if( jq_first != 1 ){
                 jprintf("\n}");
+            }
+#ifdef ENABLE_CSV
+            pcap_time_t time = parse_time(((int32_t *)f->data)[4], ((int32_t *)f->data)[3]);
+            packet_to_csv_line(num_accepted++, time);
+#endif
             break;
         case FILTER_HDR_NOT_FOUND:
             write(unknown_fd, f->data, block_len);

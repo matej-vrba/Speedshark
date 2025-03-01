@@ -61,6 +61,7 @@ void load_filters(void)
 	load_port("SSHARK_DST_PORT", &filter.dst_port);
 	load_port("SSHARK_PORT", &filter.port);
 	load_str("SSHARK_JSON_FILE", &filter.json_file);
+	load_str("SSHARK_CSV_FILE", &filter.csv_file);
     filter.src_ip32 = (uint32_t*)filter.src_ip;
     filter.dst_ip32 = (uint32_t*)filter.dst_ip;
     filter.ip_add32 = (uint32_t*)filter.ip_add;

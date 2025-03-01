@@ -6,7 +6,10 @@
 #include <assert.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <stdio.h>
+#include <time.h>
 
+               
 
 #include "util.h"
 #include "shb.h"
@@ -16,10 +19,15 @@
 #include "filter.h"
 
 FILE* jq_file = NULL;
+FILE* csv_file = NULL;
 filter_t filter;
 
-void fup_handler(int signal) {
-	switch (signal) {
+int first_sig = 1;
+
+void fup_handler(int sig) {
+  // only handle each signal once
+    signal(sig, SIG_DFL);
+  switch (sig) {
 	case SIGSEGV:
 		fprintf(stderr, "Caught fault (SIGSEGV)\n");
 		break;
@@ -30,11 +38,11 @@ void fup_handler(int signal) {
 		fprintf(stderr, "Caught fault (SIGILL)\n");
 		break;
 	default:
-		raise(signal);
+		raise(sig);
 	}
 	// for SIGSEGV and SIGBUS print a dump
 	dump();
-	raise(signal);
+	raise(sig);
 }
 
 
@@ -66,6 +74,10 @@ int main(int argc, char *argv[]) {
     signal(SIGSEGV, fup_handler);
     signal(SIGBUS, fup_handler);
     signal(SIGILL, fup_handler);
+    time_t start;
+    start = time(NULL);
+
+
 
     load_filters();
     //srand(time(NULL));
@@ -83,6 +95,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "SSHARK_DST_PORT\n");
         fprintf(stderr, "SSHARK_PORT\n");
         fprintf(stderr, "SSHARK_JSON_FILE\n");
+        fprintf(stderr, "SSHARK_CSV_FILE\n");
         return 255;
     }
 
@@ -107,6 +120,36 @@ int main(int argc, char *argv[]) {
     //hexdump(f.data, 200);
 
     jinit();
+    csvinit();
+
+    //const uint8_t str[] = "";
+    //csvprint(str);
+
+    //csvprint("");
+    __csvprint_coma();
+    csvprint("type");
+    csvprint("time_relative");
+    csvprint("tstamp");
+    csvprint("vlan_id");
+    csvprint("mac_src");
+    csvprint("mac_dst");
+    csvprint("ip_ihl");
+    csvprint("ip_tos");
+    csvprint("ip_src");
+    csvprint("ip_dst");
+    csvprint("tcp_seq");
+    csvprint("tcp_ack");
+    csvprint("sport");
+    csvprint("dport");
+    csvprint("flags");
+    csvprint("trans_len");
+    csvprint("enip_sess");
+    csvprint("enip_fields");
+    csvprint("cid");
+    csvprint("cip_seq");
+    csvprint("cip_service");
+    csvprint("cip_service_path");
+    csvnewline();
 
     //printf("file size: %lu\n", input_file_size);
     int32_t len = identify_block(&f, &outfile);
@@ -125,6 +168,7 @@ int main(int argc, char *argv[]) {
     f.data += len;
     input_file_size -= len;
     while (input_file_size > 0){
+        csvnewline();
         jnew_row();
         len = identify_block(&f, &outfile);
         assert(len > 0);
@@ -136,10 +180,12 @@ int main(int argc, char *argv[]) {
     if(input_file_size <= 0){
         //printf("Finished processintg %s\n", argv[1]);
     }
+    csvnewline();
 
 
 
 
+    fprintf(stderr, "Processed %d packets in %lds\n", header_num, time(NULL) - start);
 
     f.data = orig_data_pos;
     return EXIT_SUCCESS;

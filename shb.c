@@ -29,11 +29,12 @@ int32_t parse_shb(file_t* f, file_t* outfile){
         fprintf(stderr, "This endianness was not tested\n");
         return -2;
     }
-    if(little_endian)
-        printf(" (little endian)\n");
-    else
-        printf(" (big endian)\n");
-    printf("version: %d.%d\n", ((int16_t*)(f->data + 12))[0], ((int16_t*)(f->data + 12))[1]);
+    if (little_endian) {
+      printf(" (little endian)\n");
+    } else {
+      printf(" (big endian)\n");
+    }
+    printf("version: %d.%d\n", ((int16_t *)(f->data + 12))[0], ((int16_t *)(f->data + 12))[1]);
     section_len = ((int64_t*)(f->data + 16))[0];
     assert(section_len == -1); //if this fails, it needs to be taken care about when writing new header
     printf("section len: 0x%lx (%ld)\n", section_len, section_len);

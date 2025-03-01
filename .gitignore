@@ -1,0 +1,15 @@
+.DS_Store
+.idea
+*.log
+tmp/
+*.d
+*.o
+*.pcap
+*.pcapng
+speedshark
+speedshark.prof
+vgcore.*
+*.rawprof
+*.profdata
+*.json
+.gdb_history
